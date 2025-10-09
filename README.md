@@ -1,7 +1,7 @@
 # fuzzy
 
 idee:
-- lo stesso programma deve essere eseguito contemporaneamente N volte
+- lo stesso programma deve essere eseguito contemporaneamente N volte (processo = subprocess.Popen([nome_eseguibile]))
 - potenzialmente ogni richiesta di input del programma potrebbe essere vulnerabile, come testarle tutte? alcune potrebbero essere raggiungibili solo un una certa "ramificazione" da seguire"
 - vari tipi di input devono essere mandati ad OGNI richiesta di input. Iniziano ad essere parecchie
 - gdb permette di skippare direttamente agli input??
