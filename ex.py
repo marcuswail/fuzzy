@@ -11,7 +11,7 @@ def start(argv=[], *a, **kw):
 
 
 exe = './vuln1'
-elf = context.binary = ELF(exe, checksec=False)
+#elf = context.binary = ELF(exe, checksec=False)
 
 # per domande booleane
 boolean_payloads = [
