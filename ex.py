@@ -1,4 +1,5 @@
 from pwn import *
+from concurrent.futures import ThreadPoolExecutor
 import threading
 
 
@@ -80,71 +81,80 @@ command_injection = [
     b"$(id)",
     b"'; DROP TABLE users--",  # SQL injection
 ]
-
+'''
 unicode_payloads = [
     b"\xc0\x80",        # Overlong encoding
     b"\xff\xff\xff\xff", # Invalid UTF-8
     "💣🔥".encode(),    # Emoji
     "ＡＡＡＡ".encode(), # Fullwidth characters
 ]
-
+'''
 redos_payloads = [
     b"a" * 1000 + b"X",  # Pattern che causa backtracking
     b"(" * 100,          # Unbalanced parentheses
 ]
 
-all_payloads = [boolean_payloads, payloads, boundary_payloads, special_chars, integer_payloads, command_injection, unicode_payloads, redos_payloads]
+all_payloads = [ boolean_payloads,integer_payloads, payloads, boundary_payloads, special_chars , command_injection, redos_payloads]
 
-total_payloads = len(boolean_payloads) + len(payloads) + len(boundary_payloads) + len(special_chars) +len(integer_payloads) + len(command_injection) + len(unicode_payloads) + len(redos_payloads)
+total_payloads = len(boolean_payloads) + len(payloads) + len(boundary_payloads) + len(special_chars) +len(integer_payloads) + len(command_injection)  + len(redos_payloads)
 
 lock = threading.Lock()
 total = 0 #contatore per numero di payloads mandati
 
-def receiver_sender(payloads, counter):
+def receiver_sender(payloads):
     global total
     try:
         io = process([exe])
         while True:
-            prompt = io.recvrepeat(timeout=0.5)
-            #print("received:")
-            #print(prompt.decode(errors='ignore'))
-            io.sendline(payloads[counter])
-            print(f"sent: {payloads[counter].decode()}")
+            try:    
+                prompt = io.recvrepeat(timeout=0.5)
+            except EOFError:
+                #print(f"[!] Program exited after {counter} inputs")
+                pass   
+            except Exception as e:
+                #print(f"[!] Unexpected error: {e}")
+                pass
+            if not prompt:
+                io.close()
+                return
+            print(prompt.decode(errors='ignore'))
+            io.sendline(payloads)
+            print(f"sent: {payloads.decode()}")
             with lock:
                 total += 1
-            #print("--------------------------------")
     except EOFError:
         #print(f"[!] Program exited after {counter} inputs")
-        pass
+        pass   
     except Exception as e:
         #print(f"[!] Unexpected error: {e}")
-        pass
+        pass    
     finally:
         #print("closing process")
         
+        io.poll()
         io.close()
-    counter += 1
+    
     
 
+
+
 def fuzz(payloads):
-    threads = []
     number_of_payloads = len(payloads)
     print(f"number of payloads/process to start: {number_of_payloads}")
-    for counter in range(len(payloads)):
-        thread = threading.Thread(target=receiver_sender, args=(payloads, counter))
-        thread.start()
-        threads.append(thread)
-    return threads
-
-
-all_threads = []
+    
+    with ThreadPoolExecutor(max_workers=150) as executor:
+        futures = [executor.submit(receiver_sender, payload) for payload in payloads]
+        for future in futures:
+            future.result()
+        # Submit two tasks to run in parallel
+        #executor.submit(receiver_sender,payloads, payload)
+    
 for payloads in all_payloads:
     print(f"starting thread set for {payloads}")
-    threads = fuzz(payloads)
-    all_threads.extend(threads)
+    fuzz(payloads)
+    
 
-for t in all_threads:
-    t.join()
+
 
 print(f"total: {total}")
 print(f"total payloads: {total_payloads}")
