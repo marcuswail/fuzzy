@@ -99,6 +99,29 @@ total_payloads = len(boolean_payloads) + len(payloads) + len(boundary_payloads) 
 
 lock = threading.Lock()
 total = 0 #contatore per numero di payloads mandati
+summary_lock = threading.Lock()
+crash_results = []
+unique_crash_payloads = set()
+
+def code_to_name(code):
+    if code == 0:
+        return 'OK'
+    if code == 100:
+        return 'EOF'
+    if code == 101:
+        return 'TIMEOUT_NO_PROMPT'
+    if code == 102:
+        return 'IO_ERROR'
+    if code == 103:
+        return 'UNEXPECTED_EXCEPTION'
+    if code < 0:
+        try:
+            return f'SIGNAL_{signal.Signals(-code).name}'
+        except Exception:
+            return f'SIGNAL_{-code}'
+    return f'EXIT_{code}'
+
+
 
 def receiver_sender(payloads):
     global total
@@ -109,39 +132,46 @@ def receiver_sender(payloads):
                 prompt = io.recvrepeat(timeout=0.5)
             except EOFError:
                 #print(f"[!] Program exited after {counter} inputs")
-                break   
+                return {'code': io.poll(),'name': code_to_name(io.poll()), 'payload' : payloads}
             except Exception as e:
-                #print(f"[!] Unexpected error: {e}")
-                break
+                return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads}
             # se il programma non risponde al nostro input, rimane in hang
+            
             if not prompt:
-                io.close()
-                break
-
-            print(prompt.decode(errors='ignore'))
+                try: 
+                    io.close()
+                except Exception: 
+                    return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads}
+            #print(prompt.decode(errors='ignore'))
             io.sendline(payloads)
-            print(f"sent: {payloads.decode(errors='ignore')}")
+            #print(f"sent: {payloads.decode(errors='ignore')}")
             with lock:
                 total += 1
     except EOFError:
-        #print(f"[!] Program exited after {counter} inputs")
-        pass   
+        return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads}
     except Exception as e:
-        #print(f"[!] Unexpected error: {e}")
-        pass    
+        return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads}
     finally:
         io.close()
     
 
 
 def fuzz(payloads):
+    results = []
     number_of_payloads = len(payloads)
     print(f"number of payloads/process to start: {number_of_payloads}")
     
     with ThreadPoolExecutor(max_workers=150) as executor:
         futures = [executor.submit(receiver_sender, payload) for payload in payloads]
         for future in futures:
-            future.result()
+            result = future.result()
+            results.append(result)
+    for exc in results:
+        print(exc)
+        
+        
+        
+    
     
 for payloads in all_payloads:
     print(f"starting thread set for {payloads}")
