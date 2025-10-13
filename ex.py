@@ -127,30 +127,32 @@ def receiver_sender(payloads):
     global total
     try:
         io = process([exe])
+        pid = io.proc.pid
         while True:
             try:    
                 prompt = io.recvrepeat(timeout=0.5)
             except EOFError:
                 #print(f"[!] Program exited after {counter} inputs")
-                return {'code': io.poll(),'name': code_to_name(io.poll()), 'payload' : payloads}
+                return {'code': io.poll(),'name': code_to_name(io.poll()), 'payload' : payloads,'pid':pid}
             except Exception as e:
-                return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads}
+                return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads,'pid':pid}
             # se il programma non risponde al nostro input, rimane in hang
             
-            if not prompt:
+            if not prompt and io.poll() is None: #se è non il programma è in esecuione quindi è rimasto in stallo 
                 try: 
+                    print("rimasto fermo, programma verrà killato con sigkill pid:", pid )
                     io.close()
                 except Exception: 
-                    return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads}
+                    return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads,'pid':pid}
             #print(prompt.decode(errors='ignore'))
             io.sendline(payloads)
             #print(f"sent: {payloads.decode(errors='ignore')}")
             with lock:
                 total += 1
     except EOFError:
-        return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads}
+        return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads,'pid':pid}
     except Exception as e:
-        return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads}
+        return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads,'pid':pid}
     finally:
         io.close()
     
