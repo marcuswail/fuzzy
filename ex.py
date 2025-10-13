@@ -81,20 +81,19 @@ command_injection = [
     b"$(id)",
     b"'; DROP TABLE users--",  # SQL injection
 ]
-'''
+
 unicode_payloads = [
-    b"\xc0\x80",        # Overlong encoding
-    b"\xff\xff\xff\xff", # Invalid UTF-8
-    "💣🔥".encode(),    # Emoji
-    "ＡＡＡＡ".encode(), # Fullwidth characters
+    b"\xc0\x80", b"\xff\xff\xff\xff", 
+    "💣🔥".encode('utf-8', errors='ignore'), 
+    "ＡＡＡＡ".encode('utf-8', errors='ignore'),
 ]
-'''
+
 redos_payloads = [
     b"a" * 1000 + b"X",  # Pattern che causa backtracking
     b"(" * 100,          # Unbalanced parentheses
 ]
 
-all_payloads = [ boolean_payloads,integer_payloads, payloads, boundary_payloads, special_chars , command_injection, redos_payloads]
+all_payloads = [unicode_payloads, boolean_payloads,integer_payloads, payloads, boundary_payloads, special_chars , command_injection, redos_payloads]
 
 total_payloads = len(boolean_payloads) + len(payloads) + len(boundary_payloads) + len(special_chars) +len(integer_payloads) + len(command_injection)  + len(redos_payloads)
 
@@ -110,16 +109,18 @@ def receiver_sender(payloads):
                 prompt = io.recvrepeat(timeout=0.5)
             except EOFError:
                 #print(f"[!] Program exited after {counter} inputs")
-                pass   
+                break   
             except Exception as e:
                 #print(f"[!] Unexpected error: {e}")
-                pass
+                break
+            # se il programma non risponde al nostro input, rimane in hang
             if not prompt:
                 io.close()
-                return
+                break
+
             print(prompt.decode(errors='ignore'))
             io.sendline(payloads)
-            print(f"sent: {payloads.decode()}")
+            print(f"sent: {payloads.decode(errors='ignore')}")
             with lock:
                 total += 1
     except EOFError:
@@ -129,13 +130,8 @@ def receiver_sender(payloads):
         #print(f"[!] Unexpected error: {e}")
         pass    
     finally:
-        #print("closing process")
-        
-        io.poll()
         io.close()
     
-    
-
 
 
 def fuzz(payloads):
@@ -146,8 +142,6 @@ def fuzz(payloads):
         futures = [executor.submit(receiver_sender, payload) for payload in payloads]
         for future in futures:
             future.result()
-        # Submit two tasks to run in parallel
-        #executor.submit(receiver_sender,payloads, payload)
     
 for payloads in all_payloads:
     print(f"starting thread set for {payloads}")
