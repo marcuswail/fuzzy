@@ -1,6 +1,9 @@
 from pwn import *
 from concurrent.futures import ThreadPoolExecutor
 import threading
+import json
+
+
 
 
 # Allows you to switch between local/GDB/remote from terminal
@@ -14,88 +17,11 @@ def start(argv=[], *a, **kw):
 exe = './vuln1'
 #elf = context.binary = ELF(exe, checksec=False)
 
-# per domande booleane
-boolean_payloads = [
-    b"yes",
-    b"no",
-    b"y",
-    b"n",
-    b"1",
-    b"2",
-    b"3",
-    b"A",
-    b"B",
-    b"C",
-    b"true",
-    b"false",
-]
+with open('payloads.json', 'r') as file:
+    payloads = json.load(file)
+    all_payloads = payloads['payloads']
 
-# roba da mandare ad ogni richiesta di input
-payloads = [
-    b"%x",
-    b"%s",
-    b"%n",
-    b"%p",
-    b"%x %x %x",
-    b"%s %s %s",
-    b"%n %n %n",
-    b"%p %p %p",
-    b"AAAA %x %x %x",
-    b"BBBB %s %s %s",
-    b"%x %x %x %x %x %x %x %x %x %x %x %x %x %x %x%x %x %x %x %x%x %x %x %x %x",
-    b"%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s",
-]
-
-boundary_payloads = [
-    b"A" * 8,           # Small overflow
-    b"A" * 16,          # Medium
-    b"A" * 256,         # Large
-    b"A" * 1024,        # Very large
-    b"A" * 10000,       # Huge
-    cyclic(100),        # Pattern ciclico (per trovare offset)
-]
-
-special_chars = [
-    b"\x00",            # Null byte
-    b"\n\r",            # Newlines
-    b"\x0a\x0d",        # CR/LF
-    b"'\"",             # Quotes
-    b";|&`$",           # Shell metacharacters
-    b"../../../etc/passwd",  # Path traversal
-]
-
-integer_payloads = [
-    b"0",
-    b"-1",
-    b"2147483647",      # INT_MAX (32-bit)
-    b"2147483648",      # INT_MAX + 1
-    b"-2147483648",     # INT_MIN
-    b"4294967295",      # UINT_MAX
-    b"9999999999999",   # Very large number
-]
-
-command_injection = [
-    b"; ls",
-    b"| cat /etc/passwd",
-    b"`whoami`",
-    b"$(id)",
-    b"'; DROP TABLE users--",  # SQL injection
-]
-
-unicode_payloads = [
-    b"\xc0\x80", b"\xff\xff\xff\xff", 
-    "💣🔥".encode('utf-8', errors='ignore'), 
-    "ＡＡＡＡ".encode('utf-8', errors='ignore'),
-]
-
-redos_payloads = [
-    b"a" * 1000 + b"X",  # Pattern che causa backtracking
-    b"(" * 100,          # Unbalanced parentheses
-]
-
-all_payloads = [unicode_payloads, boolean_payloads,integer_payloads, payloads, boundary_payloads, special_chars , command_injection, redos_payloads]
-
-total_payloads = len(boolean_payloads) + len(payloads) + len(boundary_payloads) + len(special_chars) +len(integer_payloads) + len(command_injection)  + len(redos_payloads)
+print(all_payloads)
 
 lock = threading.Lock()
 total = 0 #contatore per numero di payloads mandati
@@ -145,8 +71,8 @@ def receiver_sender(payloads):
                 except Exception: 
                     return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads,'pid':pid}
             #print(prompt.decode(errors='ignore'))
-            io.sendline(payloads)
-            #print(f"sent: {payloads.decode(errors='ignore')}")
+            io.sendline(payloads.encode()) #converte in bytes
+            print(f"sent: {payloads}")
             with lock:
                 total += 1
     except EOFError:
@@ -174,13 +100,10 @@ def fuzz(payloads):
         
         
     
-    
-for payloads in all_payloads:
-    print(f"starting thread set for {payloads}")
-    fuzz(payloads)
+fuzz(all_payloads)
     
 
 
 
 print(f"total: {total}")
-print(f"total payloads: {total_payloads}")
+print(f"total payloads: {len(all_payloads)}")
