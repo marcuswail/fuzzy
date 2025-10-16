@@ -17,17 +17,27 @@ def start(argv=[], *a, **kw):
 exe = './vuln1'
 #elf = context.binary = ELF(exe, checksec=False)
 
-with open('payloads.json', 'r') as file:
+with open('pays.json', 'r') as file:
     payloads = json.load(file)
     all_payloads = payloads['payloads']
 
 print(all_payloads)
 
 lock = threading.Lock()
-total = 0 #contatore per numero di payloads mandati
+total_sent = 0 #contatore per numero di payloads mandati
+run=0 #esecuzioni processi classificati
 summary_lock = threading.Lock()
 crash_results = []
 unique_crash_payloads = set()
+
+# --- contatori crash/result ---
+GOOD_TERM = 0
+SEGMENTATION_FAULT = 0
+ABORT = 0
+ILLEGAL_INSTRUCTION = 0  
+SIGTRAP = 0
+FORCED_TERM = 0
+OTHER = 0  # per i code positivi
 
 def code_to_name(code):
     if code == 0:
@@ -47,10 +57,35 @@ def code_to_name(code):
             return f'SIGNAL_{-code}'
     return f'EXIT_{code}'
 
+def find_error(code_number):
+    global GOOD_TERM, SEGMENTATION_FAULT, ABORT, ILLEGAL_INSTRUCTION, SIGTRAP, FORCED_TERM, OTHER
+
+    if code_number == 0:
+        GOOD_TERM += 1
+        return 'GOOD_TERM'
+    elif code_number == -11:   # SIGSEGV
+        SEGMENTATION_FAULT += 1
+        return 'SEGMENTATION_FAULT'
+    elif code_number == -6:    # SIGABRT
+        ABORT += 1
+        return 'ABORT'
+    elif code_number == -4:    # SIGILL
+        ILLEGAL_INSTRUCTION += 1
+        return 'ILLEGAL_INSTRUCTION'
+    elif code_number == -5:    # SIGTRAP
+        SIGTRAP += 1
+        return 'SIGTRAP'
+    elif code_number == -9:    # SIGKILL
+        FORCED_TERM += 1
+        return 'FORCED_TERM'
+    else:
+        OTHER += 1
+        return 'OTHER'
+
 
 
 def receiver_sender(payloads):
-    global total
+    global total_sent, run
     try:
         io = process([exe])
         pid = io.proc.pid
@@ -58,10 +93,15 @@ def receiver_sender(payloads):
             try:    
                 prompt = io.recvrepeat(timeout=0.5)
             except EOFError:
+                code = io.poll()
+                errore = find_error(code)
                 #print(f"[!] Program exited after {counter} inputs")
-                return {'code': io.poll(),'name': code_to_name(io.poll()), 'payload' : payloads,'pid':pid}
+                
+                return {'code': code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid},errore
             except Exception as e:
-                return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads,'pid':pid}
+                code = io.poll()
+                errore = find_error(code)
+                return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid},errore
             # se il programma non risponde al nostro input, rimane in hang
             
             if not prompt and io.poll() is None: #se è non il programma è in esecuione quindi è rimasto in stallo 
@@ -69,16 +109,22 @@ def receiver_sender(payloads):
                     print("rimasto fermo, programma verrà killato con sigkill pid:", pid )
                     io.close()
                 except Exception: 
-                    return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads,'pid':pid}
+                    code = io.poll()
+                    errore = find_error(code)
+                    return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid},errore
             #print(prompt.decode(errors='ignore'))
             io.sendline(payloads.encode()) #converte in bytes
             print(f"sent: {payloads}")
             with lock:
-                total += 1
+                total_sent += 1
     except EOFError:
-        return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads,'pid':pid}
+        code = io.poll()
+        errore = find_error(code)
+        return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}, errore
     except Exception as e:
-        return {'code':io. poll(),'name': code_to_name(io.poll()), 'payload' : payloads,'pid':pid}
+        code = io.poll()
+        errore = find_error(code)
+        return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid},errore
     finally:
         io.close()
     
@@ -96,6 +142,19 @@ def fuzz(payloads):
             results.append(result)
     for exc in results:
         print(exc)
+
+def print_results():
+    print('=========================================')
+    print(f'GOOD_TERM found: {GOOD_TERM}')
+    print(f'SEGMENTATION_FAULT found: {SEGMENTATION_FAULT}')
+    print(f'ABORT found: {ABORT}')
+    print(f'ILLEGAL_INSTRUCTION found: {ILLEGAL_INSTRUCTION}')
+    print(f'SIGTRAP found: {SIGTRAP}')
+    print(f'FORCED_TERM found: {FORCED_TERM}')
+    print(f'OTHER found: {OTHER}')
+    print('-----------------------------------------')
+    print(f'TOTAL SENT (lines): {total_sent}')
+    print('=========================================')
         
         
         
@@ -105,5 +164,7 @@ fuzz(all_payloads)
 
 
 
-print(f"total: {total}")
+print(f"total: {total_sent}")
 print(f"total payloads: {len(all_payloads)}")
+
+print_results()

@@ -1,6 +1,3 @@
-// vuln_cli.c — mini "quiz show" interattivo con vulnerabilità didattiche
-// ⚠️ SOLO PER ESERCIZI IN LOCALE / LAB. NON USARE MAI CONTRO SISTEMI NON VOSTRI.
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
