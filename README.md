@@ -8,8 +8,9 @@ idee:
 - quanti tipi di response esistono? magari il problema rimane semplicemente in "hang on". Come classificarli?
 - mettere statististiche come il tempo di esecuzione per ogni run
 - se il programma continuare a richiedere input, mettere un limite superiore
-
-# TO DO
+-
+-****************************link per payloads: https://github.com/osamahamad/FUZZING
+- # TO DO
 # - thread su ogni lista di payloads: fatto
 # - for su avvio di thread per ogni lista di payloads: fatto
 # - gestire e classificare ogni crash/errore del processo
