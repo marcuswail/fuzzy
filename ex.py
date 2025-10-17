@@ -2,6 +2,8 @@ from pwn import *
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import json
+import logging
+from tqdm import tqdm
 
 
 
@@ -21,14 +23,10 @@ with open('pays.json', 'r') as file:
     payloads = json.load(file)
     all_payloads = payloads['payloads']
 
-print(all_payloads)
+#print(all_payloads)
 
 lock = threading.Lock()
 total_sent = 0 #contatore per numero di payloads mandati
-run=0 #esecuzioni processi classificati
-summary_lock = threading.Lock()
-crash_results = []
-unique_crash_payloads = set()
 
 # --- contatori crash/result ---
 GOOD_TERM = 0
@@ -38,7 +36,7 @@ ILLEGAL_INSTRUCTION = 0
 SIGTRAP = 0
 FORCED_TERM = 0
 OTHER = 0  # per i code positivi
-
+'''
 def code_to_name(code):
     if code == 0:
         return 'OK'
@@ -56,37 +54,45 @@ def code_to_name(code):
         except Exception:
             return f'SIGNAL_{-code}'
     return f'EXIT_{code}'
+'''
 
 def find_error(code_number):
     global GOOD_TERM, SEGMENTATION_FAULT, ABORT, ILLEGAL_INSTRUCTION, SIGTRAP, FORCED_TERM, OTHER
-
     if code_number == 0:
-        GOOD_TERM += 1
+        with lock:
+            GOOD_TERM += 1
         return 'GOOD_TERM'
     elif code_number == -11:   # SIGSEGV
-        SEGMENTATION_FAULT += 1
+        with lock:
+            SEGMENTATION_FAULT += 1
         return 'SEGMENTATION_FAULT'
     elif code_number == -6:    # SIGABRT
-        ABORT += 1
+        with lock:
+            ABORT += 1
         return 'ABORT'
     elif code_number == -4:    # SIGILL
-        ILLEGAL_INSTRUCTION += 1
+        with lock:
+            ILLEGAL_INSTRUCTION += 1
         return 'ILLEGAL_INSTRUCTION'
     elif code_number == -5:    # SIGTRAP
-        SIGTRAP += 1
+        with lock:
+            SIGTRAP += 1
         return 'SIGTRAP'
     elif code_number == -9:    # SIGKILL
-        FORCED_TERM += 1
+        with lock:
+            FORCED_TERM += 1
         return 'FORCED_TERM'
     else:
-        OTHER += 1
+        with lock:
+            OTHER += 1
         return 'OTHER'
 
 
 
-def receiver_sender(payloads):
-    global total_sent, run
+def receiver_sender(payloads, pbar=None, pbar_lock=None):
+    global total_sent
     try:
+        logging.getLogger('pwnlib').setLevel(logging.CRITICAL)
         io = process([exe])
         pid = io.proc.pid
         while True:
@@ -94,39 +100,41 @@ def receiver_sender(payloads):
                 prompt = io.recvrepeat(timeout=0.5)
             except EOFError:
                 code = io.poll()
-                errore = find_error(code)
+                
                 #print(f"[!] Program exited after {counter} inputs")
                 
-                return {'code': code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid},errore
+                return {'code': code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}
             except Exception as e:
                 code = io.poll()
-                errore = find_error(code)
-                return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid},errore
+                
+                return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}
             # se il programma non risponde al nostro input, rimane in hang
             
             if not prompt and io.poll() is None: #se è non il programma è in esecuione quindi è rimasto in stallo 
                 try: 
-                    print("rimasto fermo, programma verrà killato con sigkill pid:", pid )
+                    #print("rimasto fermo, programma verrà killato con sigkill pid:", pid )
                     io.close()
                 except Exception: 
-                    code = io.poll()
-                    errore = find_error(code)
-                    return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid},errore
+                    
+                    return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}
             #print(prompt.decode(errors='ignore'))
             io.sendline(payloads.encode()) #converte in bytes
-            print(f"sent: {payloads}")
+            #print(f"sent: {payloads}")
             with lock:
                 total_sent += 1
     except EOFError:
         code = io.poll()
-        errore = find_error(code)
-        return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}, errore
+        
+        return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}
     except Exception as e:
         code = io.poll()
-        errore = find_error(code)
-        return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid},errore
+        
+        return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}
     finally:
         io.close()
+        if pbar and pbar_lock:
+            with pbar_lock:
+                pbar.update(1)
     
 
 
@@ -135,13 +143,16 @@ def fuzz(payloads):
     number_of_payloads = len(payloads)
     print(f"number of payloads/process to start: {number_of_payloads}")
     
-    with ThreadPoolExecutor(max_workers=150) as executor:
-        futures = [executor.submit(receiver_sender, payload) for payload in payloads]
-        for future in futures:
-            result = future.result()
-            results.append(result)
-    for exc in results:
-        print(exc)
+    pbar_lock = threading.Lock()
+    with tqdm(total=number_of_payloads, desc='fuzzing', unit='payload') as pbar:
+        with ThreadPoolExecutor(max_workers=80) as executor:
+            futures = [
+                executor.submit(receiver_sender, payload, pbar, pbar_lock)
+                for payload in payloads
+            ]
+            for future in futures:
+                results.append(future.result())
+    return results
 
 def print_results():
     print('=========================================')
@@ -159,12 +170,13 @@ def print_results():
         
         
     
-fuzz(all_payloads)
+results = fuzz(all_payloads)
     
 
 
 
-print(f"total: {total_sent}")
-print(f"total payloads: {len(all_payloads)}")
 
+print(f"total payloads: {len(all_payloads)}")
 print_results()
+print(f'somma = {OTHER+ FORCED_TERM+ SIGTRAP+ ILLEGAL_INSTRUCTION+ ABORT+ SEGMENTATION_FAULT+ GOOD_TERM}')
+
