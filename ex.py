@@ -4,8 +4,20 @@ import threading
 import json
 import logging
 from tqdm import tqdm
+import random
 
-
+def select_mode():
+    print("seleziona la modalita' di fuzzing")
+    print("1) modalità base") 
+    print("2) modalità ramificata")
+    while True:
+        choice = int(input())
+        if choice==1 or choice ==2:
+            #base
+            fuzz(all_payloads, choice)
+        
+        else: 
+            print("riprova")
 
 
 # Allows you to switch between local/GDB/remote from terminal
@@ -15,13 +27,13 @@ def start(argv=[], *a, **kw):
     else:  # Run locally
         return process([exe] + argv, *a, **kw)
 
-
 exe = './vuln1'
 #elf = context.binary = ELF(exe, checksec=False)
 
 with open('pays.json', 'r') as file:
     payloads = json.load(file)
     all_payloads = payloads['payloads']
+    common_payloads = payloads['common_payloads']
 
 #print(all_payloads)
 
@@ -36,6 +48,7 @@ ILLEGAL_INSTRUCTION = 0
 SIGTRAP = 0
 FORCED_TERM = 0
 OTHER = 0  # per i code positivi
+
 '''
 def code_to_name(code):
     if code == 0:
@@ -87,8 +100,6 @@ def find_error(code_number):
             OTHER += 1
         return 'OTHER'
 
-
-
 def receiver_sender(payloads, pbar=None, pbar_lock=None):
     global total_sent
     try:
@@ -137,19 +148,87 @@ def receiver_sender(payloads, pbar=None, pbar_lock=None):
                 pbar.update(1)
     
 
+def receive_sender_pro(payloads, pbar=None, pbar_lock=None):
+    global total_sent
+    try:
+        logging.getLogger('pwnlib').setLevel(logging.CRITICAL)
+        io = process([exe])
+        pid = io.proc.pid
+        domanda_precedente = ""
+        while True:
+            try:    
+                prompt = io.recvrepeat(timeout=0.5)
+                if prompt == domanda_precedente:
+                    invio = random.choice(common_payloads.encode())
+                    print(invio)
+                    io.sendline(invio)
+                    
+                    continue
 
-def fuzz(payloads):
+
+            except EOFError:
+                code = io.poll()
+                
+                #print(f"[!] Program exited after {counter} inputs")
+                
+                return {'code': code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}
+            except Exception as e:
+                code = io.poll()
+                
+                return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}
+            # se il programma non risponde al nostro input, rimane in hang
+            
+            if not prompt and io.poll() is None: #se è non il programma è in esecuione quindi è rimasto in stallo 
+                try: 
+                    #print("rimasto fermo, programma verrà killato con sigkill pid:", pid )
+                    io.close()
+                except Exception: 
+                    
+                    return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}
+            #print(prompt.decode(errors='ignore'))
+            io.sendline(payloads.encode()) #converte in bytes
+            #print(f"sent: {payloads}")
+            with lock:
+                total_sent += 1
+            domanda_precedente=prompt
+
+    except EOFError:
+        code = io.poll()
+        
+            
+        return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}
+    except Exception as e:
+        code = io.poll()
+        
+        return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}
+    finally:
+        io.close()
+        if pbar and pbar_lock:
+            with pbar_lock:
+                pbar.update(1)
+
+
+def fuzz(payloads, choice):
     results = []
     number_of_payloads = len(payloads)
     print(f"number of payloads/process to start: {number_of_payloads}")
     
     pbar_lock = threading.Lock()
     with tqdm(total=number_of_payloads, desc='fuzzing', unit='payload') as pbar:
+         
         with ThreadPoolExecutor(max_workers=80) as executor:
-            futures = [
-                executor.submit(receiver_sender, payload, pbar, pbar_lock)
-                for payload in payloads
-            ]
+            if choice == 1:
+                futures = [
+                    executor.submit(receiver_sender, payload, pbar, pbar_lock)
+                    for payload in payloads
+                ]
+            else:
+                futures = [
+                    executor.submit(receive_sender_pro, payload, pbar, pbar_lock) for payload in payloads
+
+
+                ]
+
             for future in futures:
                 results.append(future.result())
     return results
@@ -166,16 +245,11 @@ def print_results():
     print('-----------------------------------------')
     print(f'TOTAL SENT (lines): {total_sent}')
     print('=========================================')
-        
-        
-        
-    
-results = fuzz(all_payloads)
-    
 
+ 
+#results = fuzz(all_payloads)
 
-
-
+select_mode()
 print(f"total payloads: {len(all_payloads)}")
 print_results()
 print(f'somma = {OTHER+ FORCED_TERM+ SIGTRAP+ ILLEGAL_INSTRUCTION+ ABORT+ SEGMENTATION_FAULT+ GOOD_TERM}')
