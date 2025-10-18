@@ -27,7 +27,7 @@ def start(argv=[], *a, **kw):
     else:  # Run locally
         return process([exe] + argv, *a, **kw)
 
-exe = './vuln1'
+exe = './a'
 #elf = context.binary = ELF(exe, checksec=False)
 
 with open('pays.json', 'r') as file:
@@ -108,7 +108,7 @@ def receiver_sender(payloads, pbar=None, pbar_lock=None):
         pid = io.proc.pid
         while True:
             try:    
-                prompt = io.recvrepeat(timeout=0.5)
+                prompt = io.recvrepeat(timeout=1)
             except EOFError:
                 code = io.poll()
                 
@@ -128,7 +128,7 @@ def receiver_sender(payloads, pbar=None, pbar_lock=None):
                 except Exception: 
                     
                     return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}
-            #print(prompt.decode(errors='ignore'))
+            print(prompt.decode(errors='ignore'))
             io.sendline(payloads.encode()) #converte in bytes
             #print(f"sent: {payloads}")
             with lock:
@@ -154,16 +154,22 @@ def receive_sender_pro(payloads, pbar=None, pbar_lock=None):
         logging.getLogger('pwnlib').setLevel(logging.CRITICAL)
         io = process([exe])
         pid = io.proc.pid
-        domanda_precedente = ""
+        domanda_precedente = b""
         while True:
             try:    
-                prompt = io.recvrepeat(timeout=0.5)
-                if prompt == domanda_precedente:
-                    invio = random.choice(common_payloads.encode())
-                    print(invio)
+                prompt = io.recvrepeat(timeout=2.0)
+                print("prompt:", prompt)
+                print("domanda_precedente:", domanda_precedente)
+                if prompt and domanda_precedente and prompt == domanda_precedente:
+                    print("prompt e domanda_precedente sono uguali")
+                    invio = random.choice(common_payloads).encode()
+                    print("invio common_payloads:", invio)
                     io.sendline(invio)
-                    
                     continue
+                
+                if prompt:
+                    print("prompt non è None")
+                    domanda_precedente=prompt
 
 
             except EOFError:
@@ -185,12 +191,13 @@ def receive_sender_pro(payloads, pbar=None, pbar_lock=None):
                 except Exception: 
                     
                     return {'code':code,'name': find_error(io.poll()), 'payload' : payloads,'pid':pid}
-            #print(prompt.decode(errors='ignore'))
+            print(prompt.decode(errors='ignore'))
+           
             io.sendline(payloads.encode()) #converte in bytes
-            #print(f"sent: {payloads}")
+            print(f"sent: {payloads}")
             with lock:
                 total_sent += 1
-            domanda_precedente=prompt
+            
 
     except EOFError:
         code = io.poll()
@@ -216,7 +223,7 @@ def fuzz(payloads, choice):
     pbar_lock = threading.Lock()
     with tqdm(total=number_of_payloads, desc='fuzzing', unit='payload') as pbar:
          
-        with ThreadPoolExecutor(max_workers=80) as executor:
+        with ThreadPoolExecutor(max_workers=50) as executor:
             if choice == 1:
                 futures = [
                     executor.submit(receiver_sender, payload, pbar, pbar_lock)
