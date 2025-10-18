@@ -27,7 +27,7 @@ def start(argv=[], *a, **kw):
     else:  # Run locally
         return process([exe] + argv, *a, **kw)
 
-exe = './a'
+exe = './prova'
 #elf = context.binary = ELF(exe, checksec=False)
 
 with open('pays.json', 'r') as file:
@@ -108,7 +108,7 @@ def receiver_sender(payloads, pbar=None, pbar_lock=None):
         pid = io.proc.pid
         while True:
             try:    
-                prompt = io.recvrepeat(timeout=1)
+                prompt = io.recvrepeat(timeout=0.5)
             except EOFError:
                 code = io.poll()
                 
@@ -157,13 +157,35 @@ def receive_sender_pro(payloads, pbar=None, pbar_lock=None):
         domanda_precedente = b""
         while True:
             try:    
-                prompt = io.recvrepeat(timeout=2.0)
-                print("prompt:", prompt)
-                print("domanda_precedente:", domanda_precedente)
+                prompt = io.recvrepeat(timeout=0.5)
+                #print("prompt:", prompt)
+                #print("domanda_precedente:", domanda_precedente)
+
+                '''
                 if prompt and domanda_precedente and prompt == domanda_precedente:
-                    print("prompt e domanda_precedente sono uguali")
+                    # scegli senza ripetizioni da common_payloads
+                    remaining = [p for p in common_payloads if p not in used_common]
+                    if not remaining:
+                        # tutti usati -> reset. 
+                        # Se vuoi resettare solo quando si verifica una specifica azione,
+                        # sposta questa clear() dentro quella condizione.
+                        used_common.clear()
+                        remaining = common_payloads.copy()
+                    invio_str = random.choice(remaining)
+                    used_common.add(invio_str)
+                    invio = invio_str.encode()
+                    print("invio common_payloads (no repeat):", invio)
+                    io.sendline(invio)
+                    continue
+                
+                if prompt:
+                    print("prompt non è None")
+                    domanda_precedente=prompt
+                '''
+                if prompt and domanda_precedente and prompt == domanda_precedente:
+                    #print("prompt e domanda_precedente sono uguali")
                     invio = random.choice(common_payloads).encode()
-                    print("invio common_payloads:", invio)
+                    #print("invio common_payloads:", invio)
                     io.sendline(invio)
                     continue
                 
@@ -223,7 +245,7 @@ def fuzz(payloads, choice):
     pbar_lock = threading.Lock()
     with tqdm(total=number_of_payloads, desc='fuzzing', unit='payload') as pbar:
          
-        with ThreadPoolExecutor(max_workers=50) as executor:
+        with ThreadPoolExecutor(max_workers=80) as executor:
             if choice == 1:
                 futures = [
                     executor.submit(receiver_sender, payload, pbar, pbar_lock)
